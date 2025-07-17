@@ -1,0 +1,16 @@
+{
+  "name": "jupytutor_server",
+  "version": "1.0.0",
+  "description": "Server for jupytutor API calls, authentication, and data handling.",
+  "main": "src/app.js",
+  "repository": "https://github.com/kevyg03/jupytutor_server.git",
+  "author": "Kevin Gillespie <kevin.gillespie@berkeley.edu>",
+  "license": "MIT",
+  "type": "module",
+  "dependencies": {
+    "dotenv": "^17.2.0",
+    "express": "^5.1.0",
+    "openai": "^5.10.1",
+    "tiktoken": "^1.0.21"
+  }
+}
