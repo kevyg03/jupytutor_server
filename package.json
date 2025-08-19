@@ -10,7 +10,12 @@
   "dependencies": {
     "dotenv": "^17.2.0",
     "express": "^5.1.0",
+    "multer": "^2.0.2",
     "openai": "^5.10.1",
     "tiktoken": "^1.0.21"
+  },
+  "devDependencies": {
+    "jest": "^30.0.5",
+    "supertest": "^7.1.4"
   }
 }
