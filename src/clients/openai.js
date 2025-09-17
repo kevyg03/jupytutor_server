@@ -189,17 +189,28 @@ export const promptTutor = async (chatHistory, newMessage, files = []) => {
 
     const response = await client.responses.create({
       model: model,
-      input: messages,
+      input: messages.map((m) => {
+        const { noShow, ...rest } = m;
+        return rest;
+      }),
       instructions: tutorInstructions,
     });
 
     // add to messages the response.output in the correct format. Also remove the images from the messages.
-    messages.push(...response.output.filter((m) => m.type == "message"));
+    messages.push(...response.output);
+
     // removing because it will make the next requests fail for being too large
-    const chatHistoryWithImagesRemoved = messages.map((message) => ({
-      ...message,
-      content: message.content.filter((sub) => sub.type !== "input_image"),
-    }));
+    const chatHistoryWithImagesRemoved = messages.map((message) => {
+      if (message.type == "reasoning") return { ...message, noShow: true };
+      return {
+        ...message,
+        content:
+          typeof message.content === "string"
+            ? message.content
+            : message.content.filter((sub) => sub.type !== "input_image")[0]
+                .text,
+      };
+    });
 
     return {
       response: response.output,

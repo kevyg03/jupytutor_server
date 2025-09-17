@@ -1,74 +1,53 @@
 // routes/users.js
 import express from "express";
-import multer from "multer";
 const studentRouter = express.Router();
 
 import { promptTutor } from "../clients/openai.js";
 
-// Configure multer for file uploads
-const upload = multer({
-  storage: multer.memoryStorage(), // Store files in memory as buffers
-  limits: {
-    fileSize: 10 * 1024 * 1024, // 10MB limit
-    files: 5, // Maximum 5 files per request
-  },
-  fileFilter: (req, file, cb) => {
-    // Allow common file types
-    const allowedTypes = [
-      // Images
-      "image/jpeg",
-      "image/png",
-      "image/gif",
-      "image/bmp",
-      "image/webp",
-      // Text files
-      "text/plain",
-      "text/markdown",
-      "text/csv",
-      // Code files
-      "text/x-python",
-      "application/json",
-      "text/html",
-      "text/css",
-      "application/javascript",
-      "text/typescript",
-      "text/jsx",
-      "text/tsx",
-      // Generic text
-      "text/*",
-    ];
-
-    if (
-      allowedTypes.includes(file.mimetype) ||
-      file.mimetype.startsWith("text/")
-    ) {
-      cb(null, true);
-    } else {
-      cb(new Error(`File type ${file.mimetype} is not supported`), false);
-    }
-  },
-});
-
 // Define user-related routes
-studentRouter.post("/initial", upload.array("files", 5), async (req, res) => {
+studentRouter.post("/interaction", async (req, res) => {
   try {
+    // Handle chatHistory - must be an array
+    let chatHistory = [];
+    if (req.body.chatHistory) {
+      if (Array.isArray(req.body.chatHistory)) {
+        chatHistory = req.body.chatHistory;
+      } else if (typeof req.body.chatHistory === "string") {
+        try {
+          chatHistory = JSON.parse(req.body.chatHistory);
+          if (!Array.isArray(chatHistory)) {
+            return res.status(400).json({
+              error: "Invalid chatHistory format. Expected an array.",
+            });
+          }
+        } catch (parseError) {
+          console.error("Error parsing chatHistory JSON:", parseError);
+          return res.status(400).json({
+            error:
+              "Invalid chatHistory format. Expected valid JSON string representing an array.",
+          });
+        }
+      } else {
+        return res.status(400).json({
+          error:
+            "Invalid chatHistory format. Expected an array or JSON string.",
+        });
+      }
+    }
     const response = await promptTutor(
-      req.body.chatHistory ? JSON.parse(req.body.chatHistory) : [],
+      chatHistory,
       req.body.newMessage,
       req.files || []
     );
+    console.log(response);
     res.json(response);
   } catch (error) {
-    console.error("Error in /initial endpoint:", error);
+    console.error("Error in /interaction endpoint:", error);
     res.status(500).json({
       error: error.message || "Internal server error",
       details: process.env.NODE_ENV === "development" ? error.stack : undefined,
     });
   }
-});
-
-studentRouter.post("/followon", (req, res) => {
-  res.send("Create a new user");
 });
 
 studentRouter.post("/end", (req, res) => {

@@ -11,7 +11,15 @@ assignmentRouter.get("/assignment/exists", (req, res) => {
 });
 
 assignmentRouter.post("/assignment/preprocess", (req, res) => {
-  res.json({ done: false });
+  // Handle formdata if files are present
+  const files = req.files || [];
+  const formData = req.body;
+
+  res.json({
+    done: false,
+    filesReceived: files.length,
+    formData: formData,
+  });
 });
 
 assignmentRouter
