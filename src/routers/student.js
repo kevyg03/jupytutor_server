@@ -37,9 +37,9 @@ studentRouter.post("/interaction", async (req, res) => {
     const response = await promptTutor(
       chatHistory,
       req.body.newMessage,
-      req.files || []
+      req.files || [],
+      req.body.cellType
     );
-    console.log(response);
     res.json(response);
   } catch (error) {
     console.error("Error in /interaction endpoint:", error);

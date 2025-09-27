@@ -1,8 +1,8 @@
 import dotenv from "dotenv";
 dotenv.config();
 import OpenAI from "openai";
-import { get_encoding, encoding_for_model } from "tiktoken";
-const enc = get_encoding("cl100k_base");
+// import { get_encoding, encoding_for_model } from "tiktoken";
+// const enc = get_encoding("cl100k_base");
 import fs from "fs";
 import path from "path";
 
@@ -52,7 +52,54 @@ const processFile = (file) => {
     .extname(file.originalname || file.name || "")
     .toLowerCase();
 
-  // Handle image files
+  // Helper function to detect image by content (magic bytes)
+  const isImageByContent = (buffer) => {
+    if (!buffer || buffer.length < 4) return null;
+
+    // PNG: 89 50 4E 47
+    if (
+      buffer[0] === 0x89 &&
+      buffer[1] === 0x50 &&
+      buffer[2] === 0x4e &&
+      buffer[3] === 0x47
+    ) {
+      return "image/png";
+    }
+    // JPEG: FF D8 FF
+    if (buffer[0] === 0xff && buffer[1] === 0xd8 && buffer[2] === 0xff) {
+      return "image/jpeg";
+    }
+    // GIF: 47 49 46 38
+    if (
+      buffer[0] === 0x47 &&
+      buffer[1] === 0x49 &&
+      buffer[2] === 0x46 &&
+      buffer[3] === 0x38
+    ) {
+      return "image/gif";
+    }
+    // BMP: 42 4D
+    if (buffer[0] === 0x42 && buffer[1] === 0x4d) {
+      return "image/bmp";
+    }
+    // WebP: 52 49 46 46 ... 57 45 42 50
+    if (
+      buffer.length >= 12 &&
+      buffer[0] === 0x52 &&
+      buffer[1] === 0x49 &&
+      buffer[2] === 0x46 &&
+      buffer[3] === 0x46 &&
+      buffer[8] === 0x57 &&
+      buffer[9] === 0x45 &&
+      buffer[10] === 0x42 &&
+      buffer[11] === 0x50
+    ) {
+      return "image/webp";
+    }
+    return null;
+  };
+
+  // Handle image files by extension
   if (
     [".jpg", ".jpeg", ".png", ".gif", ".bmp", ".webp"].includes(fileExtension)
   ) {
@@ -60,6 +107,19 @@ const processFile = (file) => {
     return {
       type: "input_image",
       image_url: `data:${mimetype};base64,${file.buffer.toString("base64")}`,
+      noShow: true,
+    };
+  }
+
+  // Handle image files by content detection (when extension is missing)
+  const detectedMimeType = isImageByContent(file.buffer);
+  if (detectedMimeType) {
+    return {
+      type: "input_image",
+      image_url: `data:${detectedMimeType};base64,${file.buffer.toString(
+        "base64"
+      )}`,
+      noShow: true,
     };
   }
 
@@ -70,6 +130,7 @@ const processFile = (file) => {
       text: `Python Code File (${
         file.originalname || file.name
       }):\n\n${file.buffer.toString("utf-8")}`,
+      noShow: true,
     };
   }
 
@@ -80,6 +141,7 @@ const processFile = (file) => {
       text: `CSV Data File (${
         file.originalname || file.name
       }):\n\n${file.buffer.toString("utf-8")}`,
+      noShow: true,
     };
   }
 
@@ -103,6 +165,7 @@ const processFile = (file) => {
       text: `${fileExtension.toUpperCase().substring(1)} File (${
         file.originalname || file.name
       }):\n\n${file.buffer.toString("utf-8")}`,
+      noShow: true,
     };
   }
 
@@ -112,10 +175,22 @@ const processFile = (file) => {
     text: `Unsupported File Type (${fileExtension}) - ${
       file.originalname || file.name
     }:\n\n[File content could not be processed. Please convert to a supported format.]`,
+    noShow: true,
   };
 };
 
-const tutorInstructions = fs.readFileSync("src/prompts/Get_help.txt", "utf8");
+const graderInstructions = fs.readFileSync(
+  "src/prompts/grader_prompt.txt",
+  "utf8"
+);
+const freeResponseInstructions = fs.readFileSync(
+  "src/prompts/free_prompt.txt",
+  "utf8"
+);
+const successInstructions = fs.readFileSync(
+  "src/prompts/success_prompt.txt",
+  "utf8"
+);
 
 /**
  * This function is a wrapper around the OpenAI API that can take chat history, a new message, and optional files and return a response from the LLM.
@@ -132,7 +207,12 @@ const tutorInstructions = fs.readFileSync("src/prompts/Get_help.txt", "utf8");
  *   - newChatHistory: Updated chat history with the new conversation (except for files, these must be added each time they are required)
  *   - promptSuggestions: Suggested follow-up prompts
  */
-export const promptTutor = async (chatHistory, newMessage, files = []) => {
+export const promptTutor = async (
+  chatHistory,
+  newMessage,
+  files = [],
+  cellType
+) => {
   try {
     // Prepare messages array
     const messages = [];
@@ -177,23 +257,33 @@ export const promptTutor = async (chatHistory, newMessage, files = []) => {
           const ext = path
             .extname(f.originalname || f.name || "")
             .toLowerCase();
-          return [".jpg", ".jpeg", ".png", ".gif", ".bmp", ".webp"].includes(
-            ext
-          );
+          // Check by extension first
+          if (
+            [".jpg", ".jpeg", ".png", ".gif", ".bmp", ".webp"].includes(ext)
+          ) {
+            return true;
+          }
+          // Check by content if no extension
+          return isImageByContent(f.buffer) !== null;
         })) ||
       hasImagesInMessages(messages);
 
     // Note: Currently using gpt-5-nano for all requests, but this could be updated
     // to use different models based on content type if needed
     const model = "gpt-5-nano";
-
+    const instructions =
+      cellType === "grader"
+        ? graderInstructions
+        : cellType === "free_response"
+        ? freeResponseInstructions
+        : successInstructions;
     const response = await client.responses.create({
       model: model,
       input: messages.map((m) => {
         const { noShow, ...rest } = m;
         return rest;
       }),
-      instructions: tutorInstructions,
+      instructions,
     });
 
     // add to messages the response.output in the correct format. Also remove the images from the messages.
