@@ -138,10 +138,8 @@ app.use((error, req, res, next) => {
 
 // Attach the endpoints implemented in routers/
 import studentRouter from "./routers/student.js";
-import assignmentRouter from "./routers/assignment.js";
 
 app.use(studentRouter);
-app.use(assignmentRouter);
 
 // Run the app
 app.listen(PORT, () => {

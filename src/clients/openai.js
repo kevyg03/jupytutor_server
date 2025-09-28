@@ -200,6 +200,9 @@ const successInstructions = fs.readFileSync(
  *   - buffer: The file content as a Buffer
  *   - originalname: The original filename
  *   - mimetype: The MIME type of the file
+ * @param {string} cellType - The type of cell (grader, free_response, success).
+ * @param {Object} res - Express response object for streaming (optional).
+ * @param {boolean} stream - Whether to stream the response (default: false).
  * @returns {Promise<Object>} The response from the LLM containing:
  *   - reasoning: The AI's reasoning process
  *   - message: The AI's response message
@@ -211,7 +214,9 @@ export const promptTutor = async (
   chatHistory,
   newMessage,
   files = [],
-  cellType
+  cellType,
+  res = null,
+  stream = false
 ) => {
   try {
     // Prepare messages array
@@ -248,7 +253,28 @@ export const promptTutor = async (
       content: messageContent,
     };
 
-    messages.push(userMessage);
+    // Avoid duplicating the latest user message if it's already present
+    const lastMessage = messages[messages.length - 1];
+    const lastUserText =
+      lastMessage && lastMessage.role === "user"
+        ? Array.isArray(lastMessage.content)
+          ? lastMessage.content.find((sub) => sub.type === "input_text")
+              ?.text || ""
+          : typeof lastMessage.content === "string"
+          ? lastMessage.content
+          : ""
+        : null;
+    const newMessageText = typeof newMessage === "string" ? newMessage : "";
+
+    if (
+      !(
+        lastUserText &&
+        newMessageText &&
+        lastUserText.trim() === newMessageText.trim()
+      )
+    ) {
+      messages.push(userMessage);
+    }
 
     // Select model based on whether any messages contain images
     const hasImages =
@@ -277,38 +303,164 @@ export const promptTutor = async (
         : cellType === "free_response"
         ? freeResponseInstructions
         : successInstructions;
+
+    // Set up streaming response headers if streaming is enabled
+    if (stream && res) {
+      res.setHeader("Content-Type", "text/plain");
+      res.setHeader("Transfer-Encoding", "chunked");
+      res.setHeader("Cache-Control", "no-cache");
+      res.setHeader("Connection", "keep-alive");
+    }
+
     const response = await client.responses.create({
       model: model,
       input: messages.map((m) => {
-        const { noShow, ...rest } = m;
-        return rest;
+        // Strip top-level noShow and any nested noShow within content items
+        const { noShow, content, ...rest } = m;
+        const cleaned = { ...rest };
+        if (Array.isArray(content)) {
+          cleaned.content = content.map((item) => {
+            if (!item || typeof item !== "object") return item;
+            const { noShow: _ignore, ...cleanItem } = item;
+            return cleanItem;
+          });
+        } else if (content !== undefined) {
+          cleaned.content = content;
+        }
+        return cleaned;
       }),
       instructions,
+      stream: stream,
     });
 
-    // add to messages the response.output in the correct format. Also remove the images from the messages.
-    messages.push(...response.output);
+    // Handle streaming response
+    if (stream && res) {
+      let fullOutput = [];
+      let currentMessage = "";
+      let currentReasoning = "";
 
-    // removing because it will make the next requests fail for being too large
-    const chatHistoryWithImagesRemoved = messages.map((message) => {
-      if (message.type == "reasoning") return { ...message, noShow: true };
-      return {
-        ...message,
-        content:
-          typeof message.content === "string"
-            ? message.content
-            : message.content.filter((sub) => sub.type !== "input_image")[0]
-                .text,
+      for await (const event of response) {
+        // Handle different event types from the responses endpoint
+        if (event.type === "response.output_text.delta") {
+          // Stream text content as it arrives
+          const delta = event.delta || "";
+          currentMessage += delta;
+
+          res.write(
+            `data: ${JSON.stringify({
+              type: "message_delta",
+              content: delta,
+              role: "assistant",
+            })}\n\n`
+          );
+        } else if (event.type === "response.output_text.done") {
+          // Message is complete
+          if (currentMessage) {
+            fullOutput.push({
+              type: "message",
+              role: "assistant",
+              content: currentMessage,
+            });
+          }
+        } else if (event.type === "response.reasoning.delta") {
+          // Stream reasoning content as it arrives
+          // const delta = event.data?.delta || "";
+          // currentReasoning += delta;
+          // res.write(
+          //   `data: ${JSON.stringify({
+          //     type: "reasoning_delta",
+          //     content: delta,
+          //   })}\n\n`
+          // );
+        } else if (event.type === "response.reasoning.done") {
+          // Reasoning is complete
+          if (currentReasoning) {
+            fullOutput.push({
+              type: "reasoning",
+              content: currentReasoning,
+            });
+          }
+        } else if (event.type === "response.done") {
+          // The entire response is complete
+          break;
+        }
+      }
+
+      // Add the complete output to messages
+      messages.push(...fullOutput);
+
+      // Process the final chat history (removing images for size)
+      const chatHistoryWithImagesRemoved = messages.map((message) => {
+        if (message.type == "reasoning") return { ...message, noShow: true };
+        return {
+          ...message,
+          content:
+            typeof message.content === "string"
+              ? message.content
+              : message.content.filter((sub) => sub.type !== "input_image")[0]
+                  .text,
+        };
+      });
+
+      // Send the final response data
+      const finalResponse = {
+        response: fullOutput,
+        newChatHistory: chatHistoryWithImagesRemoved,
+        promptSuggestions: [],
       };
-    });
 
-    return {
-      response: response.output,
-      newChatHistory: chatHistoryWithImagesRemoved,
-      promptSuggestions: [],
-    };
+      // Send the final data and close the stream
+      res.write(
+        `data: ${JSON.stringify({
+          type: "final_response",
+          data: finalResponse,
+        })}\n\n`
+      );
+
+      res.write("data: [DONE]\n\n");
+      res.end();
+
+      return finalResponse;
+    } else {
+      // Handle non-streaming response
+      // add to messages the response.output in the correct format. Also remove the images from the messages.
+      messages.push(...response.output);
+
+      // removing because it will make the next requests fail for being too large
+      const chatHistoryWithImagesRemoved = messages.map((message) => {
+        if (message.type == "reasoning") return { ...message, noShow: true };
+        return {
+          ...message,
+          content:
+            typeof message.content === "string"
+              ? message.content
+              : message.content.filter((sub) => sub.type !== "input_image")[0]
+                  .text,
+        };
+      });
+
+      return {
+        response: response.output,
+        newChatHistory: chatHistoryWithImagesRemoved,
+        promptSuggestions: [],
+      };
+    }
   } catch (error) {
     console.error("Error in promptTutor:", error);
+
+    // Handle streaming error
+    if (stream && res && !res.headersSent) {
+      res.write(
+        `data: ${JSON.stringify({
+          type: "error",
+          error: error.message || "Internal server error",
+        })}\n\n`
+      );
+
+      res.write("data: [DONE]\n\n");
+      res.end();
+    }
+
     throw error;
   }
 };
