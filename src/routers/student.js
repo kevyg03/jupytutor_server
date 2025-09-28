@@ -50,6 +50,60 @@ studentRouter.post("/interaction", async (req, res) => {
   }
 });
 
+// Streaming endpoint for real-time chat responses
+studentRouter.post("/interaction/stream", async (req, res) => {
+  try {
+    // Handle chatHistory - must be an array
+    let chatHistory = [];
+    if (req.body.chatHistory) {
+      if (Array.isArray(req.body.chatHistory)) {
+        chatHistory = req.body.chatHistory;
+      } else if (typeof req.body.chatHistory === "string") {
+        try {
+          chatHistory = JSON.parse(req.body.chatHistory);
+          if (!Array.isArray(chatHistory)) {
+            return res.status(400).json({
+              error: "Invalid chatHistory format. Expected an array.",
+            });
+          }
+        } catch (parseError) {
+          console.error("Error parsing chatHistory JSON:", parseError);
+          return res.status(400).json({
+            error:
+              "Invalid chatHistory format. Expected valid JSON string representing an array.",
+          });
+        }
+      } else {
+        return res.status(400).json({
+          error:
+            "Invalid chatHistory format. Expected an array or JSON string.",
+        });
+      }
+    }
+
+    // Call the function with streaming enabled
+    await promptTutor(
+      chatHistory,
+      req.body.newMessage,
+      req.files || [],
+      req.body.cellType,
+      res,
+      true // Enable streaming
+    );
+  } catch (error) {
+    console.error("Error in /interaction/stream endpoint:", error);
+
+    // Send error to client if response hasn't been sent yet
+    if (!res.headersSent) {
+      res.status(500).json({
+        error: error.message || "Internal server error",
+        details:
+          process.env.NODE_ENV === "development" ? error.stack : undefined,
+      });
+    }
+  }
+});
+
 studentRouter.post("/end", (req, res) => {
   res.send("Create a new user");
 });
