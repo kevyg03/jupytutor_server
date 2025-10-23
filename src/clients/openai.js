@@ -363,7 +363,7 @@ export const promptTutor = async (
             });
           }
         } else if (event.type === "response.reasoning.delta") {
-          // Stream reasoning content as it arrives
+          // Reasoning content not used for GPT-5 nano (and not shown in the notebook)
           // const delta = event.data?.delta || "";
           // currentReasoning += delta;
           // res.write(
@@ -372,6 +372,7 @@ export const promptTutor = async (
           //     content: delta,
           //   })}\n\n`
           // );
+          // const delta = event.data?.delta || "";
         } else if (event.type === "response.reasoning.done") {
           // Reasoning is complete
           if (currentReasoning) {
