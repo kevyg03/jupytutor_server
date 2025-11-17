@@ -1,6 +1,6 @@
 import dotenv from "dotenv";
 dotenv.config();
-import OpenAI from "openai";
+import OpenAI, { AzureOpenAI } from "openai";
 // import { get_encoding, encoding_for_model } from "tiktoken";
 // const enc = get_encoding("cl100k_base");
 import fs from "fs";
@@ -25,7 +25,15 @@ import path from "path";
 //   defaultHeaders: { "api-key": apiKey },
 // });
 
-const client = new OpenAI({ apiKey: process.env.TEST_KEY });
+const GPT_5_MINI_URL =
+  "https://jupytutor.openai.azure.com/openai/responses?api-version=2025-04-01-preview";
+const client = new AzureOpenAI({
+  apiKey: process.env.AZURE_OPEN_AI_KEY,
+  baseURL: GPT_5_MINI_URL,
+  apiVersion: "2025-04-01-preview",
+  deployment: "gpt-5-mini",
+  region: "westus",
+});
 
 // Helper function to check if any message contains images
 const hasImagesInMessages = (messages) => {
@@ -294,9 +302,9 @@ export const promptTutor = async (
         })) ||
       hasImagesInMessages(messages);
 
-    // Note: Currently using gpt-5-nano for all requests, but this could be updated
+    // Note: Currently using gpt-5-mini for all requests, but this could be updated
     // to use different models based on content type if needed
-    const model = "gpt-5-nano";
+    const model = "gpt-5-mini";
     const instructions =
       cellType === "grader"
         ? graderInstructions
