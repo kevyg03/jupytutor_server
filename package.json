@@ -21,7 +21,7 @@
     "supertest": "^7.1.4"
   },
   "scripts": {
-    "start": "node src/app.js",
+    "start": "yarn install && node src/app.js",
     "reset": "pkill -f 'node src/app.js' && node src/app.js",
     "stop": "pkill -f 'node src/app.js'"
   }
