@@ -1,0 +1,5 @@
+{
+  "appService.zipIgnorePattern": ["node_modules{,/**}", ".vscode{,/**}"],
+  "appService.defaultWebAppToDeploy": "/subscriptions/5c2304f4-0ec7-4146-a5c3-e4da8ba5e350/resourceGroups/jupytutor/providers/Microsoft.Web/sites/jupytutor-server",
+  "appService.deploySubpath": "."
+}

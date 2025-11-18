@@ -1,10 +1,12 @@
 import express from "express";
 import cors from "cors";
 import multer from "multer";
+import dotenv from "dotenv";
+dotenv.config();
 
 // Initialize the app instance
 const app = express();
-const PORT = 3000;
+const PORT = process.env.PORT || 3000;
 
 // Configure multer for handling formdata
 const upload = multer({
