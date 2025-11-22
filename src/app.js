@@ -71,7 +71,7 @@ const corsOptions = {
 
     return isAllowed
       ? callback(null, true)
-      : callback(new Error("Not allowed by CORS"));
+      : callback(new Error("Not allowed by CORS, with origin: " + origin));
   },
   credentials: true, // Required for credentials: 'include'
   methods: ["GET", "POST", "PUT", "DELETE", "OPTIONS"], // Allowed HTTP methods
