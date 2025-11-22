@@ -53,25 +53,25 @@ const upload = multer({
 });
 
 const corsOptions = {
-  origin: function (origin, callback) {
+  origin(origin, callback) {
     // Allow requests with no origin (like mobile apps or curl requests)
     if (!origin) return callback(null, true);
 
-    // Allow your client domains
     const allowedOrigins = [
       "http://localhost:8888",
       "http://127.0.0.1:8888",
       "http://localhost:8889",
       "http://127.0.0.1:8889",
-      // "http://localhost:8888",
-      // "http://127.0.0.1:8888",
+      "https://datahub.berkeley.edu",
     ];
 
-    if (allowedOrigins.indexOf(origin) !== -1) {
-      callback(null, true);
-    } else {
-      callback(new Error("Not allowed by CORS"));
-    }
+    const isAllowed =
+      allowedOrigins.includes(origin) ||
+      origin.endsWith(".datahub.berkeley.edu");
+
+    return isAllowed
+      ? callback(null, true)
+      : callback(new Error("Not allowed by CORS"));
   },
   credentials: true, // Required for credentials: 'include'
   methods: ["GET", "POST", "PUT", "DELETE", "OPTIONS"], // Allowed HTTP methods
